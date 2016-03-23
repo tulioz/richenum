@@ -8,3 +8,4 @@ Contributors
 | `Dale Hui <http://github.com/dhui>`_
 | `Robert MacCloy <http://github.com/rbm>`_
 | `Sam Vilain <http://github.com/samv>`_
+| `Ofer Goldstein <http://github.com/tulioz>`_

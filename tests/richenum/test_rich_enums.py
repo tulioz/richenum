@@ -2,13 +2,11 @@
 # pylint: disable=E1101
 
 import copy
-from six import PY3
+from six import PY2
 try:
     import unittest2 as unittest
 except ImportError:
     import unittest
-if PY3:
-    unicode = str  # for flake8, mainly
 
 from richenum import EnumConstructionException  # noqa
 from richenum import EnumLookupError  # noqa
@@ -54,8 +52,8 @@ class RichEnumTestSuite(unittest.TestCase):
         self.assertFalse(parsnip in Vegetable)
 
     def test_enums_iterate_through_members(self):
-        members = set(e for e in Vegetable)
-        self.assertEqual(members, set((Vegetable.OKRA, Vegetable.BROCCOLI)))
+        members = {e for e in Vegetable}
+        self.assertEqual(members, {Vegetable.OKRA, Vegetable.BROCCOLI})
 
     def test_lookup_by_canonical_name(self):
         self.assertEqual(Vegetable.from_canonical('okra'), Vegetable.OKRA)
@@ -75,13 +73,13 @@ class RichEnumTestSuite(unittest.TestCase):
 
     def test_choices(self):
         self.assertEqual(
-            set(x for x in Vegetable.choices()),
-            set((('okra', 'Okra'), ('broccoli', 'Broccoli'))),
+            {x for x in Vegetable.choices()},
+            {('okra', 'Okra'), ('broccoli', 'Broccoli')},
         )
 
         self.assertEqual(
-            set(x for x in Vegetable.choices(value_field='flavor', display_field='canonical_name')),
-            set((('gross', 'okra'), ('delicious', 'broccoli'))),
+            {x for x in Vegetable.choices(value_field='flavor', display_field='canonical_name')},
+            {('gross', 'okra'), ('delicious', 'broccoli')},
         )
 
     def test_public_members_must_be_enum_values(self):
@@ -135,7 +133,7 @@ class RichEnumTestSuite(unittest.TestCase):
     def test_equality_by_canonical_name_and_type(self):
         # Tests equality of canonical names, not identity
         okra_copy = copy.deepcopy(Vegetable.OKRA)
-        self.assertFalse(okra_copy is Vegetable.OKRA)
+        self.assertIsNot(okra_copy, Vegetable.OKRA)
         self.assertEqual(Vegetable.OKRA, okra_copy)
 
     def test_unicode_handling(self):
@@ -145,5 +143,5 @@ class RichEnumTestSuite(unittest.TestCase):
             "<VegetableEnumValue: okra..? \('Okra..?'\)>",
         )
         self.assertEqual(str(poop_okra), "Okra💩")
-        if not PY3:
+        if PY2:
             self.assertEqual(unicode(poop_okra), u"Okra💩")

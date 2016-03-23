@@ -3,13 +3,11 @@
 # pylint: disable=E1101
 
 import copy
-from six import PY3
+from six import PY2
 try:
     import unittest2 as unittest
 except ImportError:
     import unittest
-if PY3:
-    unicode = str  # for flake8, mainly
 
 from richenum import EnumConstructionException  # noqa
 from richenum import EnumLookupError  # noqa
@@ -120,7 +118,7 @@ class OrderedRichEnumTestSuite(unittest.TestCase):
             r"<BreakfastEnumValue #3: oatmeal..? \('Oatmeal..?'\)>",
         )
         self.assertEqual(str(poop_oatmeal), "Oatmeal💩")
-        if not PY3:
+        if PY2:
             self.assertEqual(unicode(poop_oatmeal), u"Oatmeal💩")
 
     def test_enum_hashable(self):

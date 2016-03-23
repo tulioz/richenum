@@ -1,56 +1,33 @@
 import collections
 import copy
-from functools import total_ordering
 import logging
 import numbers
-from six import PY3
+import six
 from six import string_types
 from six import with_metaclass
 
 from operator import itemgetter
 
-if PY3:
-    unicode = str  # workaround for flake8
-
 
 logger = logging.getLogger(__name__)
 
 
-class EnumConstructionException(Exception):
+class EnumError(Exception):
+    pass
+
+
+class EnumConstructionException(EnumError):
     """
     Raised whenever there's an error in an Enum's declaration.
     """
     pass
 
 
-class EnumLookupError(Exception):
+class EnumLookupError(EnumError):
     """
     Raised when an enum cannot be found by the specified method of lookup.
     """
     pass
-
-
-def _str_or_ascii_replace(stringy):
-    if PY3:
-        return stringy
-    else:
-        if isinstance(stringy, str):
-            stringy = stringy.decode('utf-8')
-        return stringy.encode('ascii', 'replace')
-
-
-def _items(dict):
-    try:
-        return dict.iteritems()
-    except AttributeError:
-        return dict.items()
-
-
-def _values(dict):
-    try:
-        return dict.itervalues()
-    except AttributeError:
-        return dict.values()
 
 
 def enum(**enums):
@@ -65,53 +42,51 @@ def enum(**enums):
         2
     """
     # Enum values must be hashable to support reverse lookup.
-    if not all(isinstance(val, collections.Hashable) for val in _values(enums)):
+    if not all(isinstance(val, collections.Hashable) for val in six.itervalues(enums)):
         raise EnumConstructionException('All enum values must be hashable.')
 
     # Cheating by maintaining a copy of original dict for iteration b/c iterators are hard.
     # It must be a deepcopy because new.classobj() modifies the original.
     en = copy.deepcopy(enums)
-    e = type('Enum', (_EnumMethods,), dict((k, v) for k, v in _items(en)))
+    e = type('Enum', (), {k: v for k, v in six.iteritems(en)})
 
     try:
-        e.choices = [(v, k) for k, v in sorted(_items(enums), key=itemgetter(1))]  # DEPRECATED
+        e.choices = [(v, k) for k, v in sorted(six.iteritems(enums), key=itemgetter(1))]  # DEPRECATED
     except TypeError:
         pass
     e.get_id_by_label = e.__dict__.get
-    e.get_label_by_id = dict((v, k) for (k, v) in _items(enums)).get
+    e.get_label_by_id = {v: k for k, v in six.iteritems(enums)}.get
 
     return e
 
 
-@total_ordering
 class RichEnumValue(object):
-    def __init__(self, canonical_name, display_name, *args, **kwargs):
+    def __init__(self, canonical_name, display_name):
         self.canonical_name = canonical_name
         self.display_name = display_name
 
     def __repr__(self):
         return "<%s: %s ('%s')>" % (
             self.__class__.__name__,
-            _str_or_ascii_replace(self.canonical_name),
-            _str_or_ascii_replace(self.display_name),
+            self.canonical_name.decode('utf-8', 'replace').encode('ascii', 'replace'),
+            unicode(self.display_name).encode('ascii', 'replace'),
         )
 
     def __unicode__(self):
         return unicode(self.display_name)
 
     def __str__(self):
-        return self.display_name if PY3 else unicode(self).encode(
-            'utf-8', 'xmlcharrefreplace')
+        return unicode(self).encode('utf-8', 'xmlcharrefreplace')
 
     def __hash__(self):
         return hash(self.canonical_name)
 
-    def __lt__(self, other):
+    def __cmp__(self, other):
         if other is None:
             return -1
         if not isinstance(other, type(self)):
             return -1
-        return self.canonical_name < other.canonical_name
+        return cmp(self.canonical_name, other.canonical_name)
 
     def __eq__(self, other):
         if other is None:
@@ -133,10 +108,9 @@ class RichEnumValue(object):
         return (getattr(self, value_field), getattr(self, display_field))
 
 
-@total_ordering
 class OrderedRichEnumValue(RichEnumValue):
-    def __init__(self, index, canonical_name, display_name, *args, **kwargs):
-        super(OrderedRichEnumValue, self).__init__(canonical_name, display_name, args, kwargs)
+    def __init__(self, index, canonical_name, display_name):
+        super(OrderedRichEnumValue, self).__init__(canonical_name, display_name)
         if not isinstance(index, numbers.Integral):
             raise EnumConstructionException("Index must be an integer type, not: %s" % type(index))
         if index < 0:
@@ -148,15 +122,16 @@ class OrderedRichEnumValue(RichEnumValue):
         return "<%s #%s: %s ('%s')>" % (
             self.__class__.__name__,
             self.index,
-            _str_or_ascii_replace(self.canonical_name),
-            _str_or_ascii_replace(self.display_name),
+            self.canonical_name.decode('utf-8', 'replace').encode('ascii', 'replace'),
+            unicode(self.display_name).encode('ascii', 'replace'),
         )
 
-    def __lt__(self, other):
-        if isinstance(other, type(self)):
-            return self.index < other.index
-        else:
-            return True
+    def __cmp__(self, other):
+        if other is None:
+            return -1
+        if not isinstance(other, type(self)):
+            return -1
+        return cmp(self.index, other.index)
 
     def __eq__(self, other):
         if isinstance(other, type(self)):
@@ -199,9 +174,7 @@ def _setup_members(cls_attrs, cls_parents, member_cls):
             else:
                 last_type = attr_type
 
-        if "__virtual__" not in cls_attrs and cls_parents not in [
-                (object, ), (_EnumMethods, )
-        ] and not members:
+        if cls_parents not in ((object, ), (_EnumMethods, )) and not members:
             raise EnumConstructionException(
                 "Must specify at least one attribute when using RichEnum")
 
@@ -223,19 +196,19 @@ class _BaseRichEnumMetaclass(type):
             return False
         if not type(members[0]) == type(item):
             return False
-        return (item in members)
+        return item in members
 
 
 class _RichEnumMetaclass(_BaseRichEnumMetaclass):
-    def __new__(cls, cls_name, cls_parents, cls_attrs):
+    def __new__(mcs, cls_name, cls_parents, cls_attrs):
         members = _setup_members(cls_attrs, cls_parents, RichEnumValue)
         # Use tuple when possible when setting internal attributes to prevent modification
         cls_attrs['_MEMBERS'] = tuple(members)
-        return super(_RichEnumMetaclass, cls).__new__(cls, cls_name, cls_parents, cls_attrs)
+        return super(_RichEnumMetaclass, mcs).__new__(mcs, cls_name, cls_parents, cls_attrs)
 
 
 class _OrderedRichEnumMetaclass(_BaseRichEnumMetaclass):
-    def __new__(cls, cls_name, cls_parents, cls_attrs):
+    def __new__(mcs, cls_name, cls_parents, cls_attrs):
         members = _setup_members(cls_attrs, cls_parents, OrderedRichEnumValue)
         members.sort(key=lambda x: x.index)
 
@@ -246,10 +219,10 @@ class _OrderedRichEnumMetaclass(_BaseRichEnumMetaclass):
         seen = set()
         for member in members:
             if member.index in seen:
-                raise EnumConstructionException("Index already defined: %s." % (member.index))
+                raise EnumConstructionException("Index already defined: %s." % member.index)
             seen.add(member.index)
 
-        return super(_OrderedRichEnumMetaclass, cls).__new__(cls, cls_name, cls_parents, cls_attrs)
+        return super(_OrderedRichEnumMetaclass, mcs).__new__(mcs, cls_name, cls_parents, cls_attrs)
 
     ############################################################################
     # Overwriting built-ins
@@ -329,8 +302,8 @@ class RichEnum(with_metaclass(_RichEnumMetaclass, _EnumMethods)):
            is logged/printed, it'll show your custom RichEnumValue and it'll be
            easier to differentiate between all of your different RichEnums.
 
-   """
-    __virtual__ = True
+    """
+    pass
 
 
 class OrderedRichEnum(with_metaclass(_OrderedRichEnumMetaclass, _EnumMethods)):
@@ -355,7 +328,6 @@ class OrderedRichEnum(with_metaclass(_OrderedRichEnumMetaclass, _EnumMethods)):
         >>> MyOrderedRichEnum.from_index(1)
         OrderedRichEnumValue - idx: 1  canonical_name: 'foo'  display_name: 'Foo'
     """
-    __virtual__ = True
 
     @classmethod
     def from_index(cls, index):
