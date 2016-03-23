@@ -6,6 +6,9 @@ python:
   - "3.5"
   - "pypy"
 sudo: false
+before_install:
+  - pip install codecov
+  - pip install coveralls
 install:
   # pylint needs unittest2 to check the test code.
   - "pip install -q flake8==2.5.2 pylint nose six"
@@ -14,4 +17,7 @@ before_script:
   - "flake8 tests src setup.py"
   - "pylint -E src/richenum"
   - "pylint -E setup.py"
-script: "nosetests -s -v"
+script: "nosetests -s -v --with-coverage"
+after_success:
+  - codecov
+  - coveralls
